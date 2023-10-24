@@ -1,0 +1,79 @@
+version: '2'
+
+services:
+  tarantool:
+    container_name: tarantool
+    image: tarantool/tarantool:1.7
+    command: tarantool /usr/local/share/tarantool/app.lua
+    environment:
+      - TARANTOOL_USER_NAME=tarantool
+      - TARANTOOL_USER_PASSWORD=tarantool
+    ports:
+      - 3301:3301
+    volumes:
+      - ./app.lua:/usr/local/share/tarantool/app.lua
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka1
+    depends_on:
+      - zookeeper
+    ports:
+      - 9092:9092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+
+  db:
+    image: 'postgres:16-alpine'
+    container_name: db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+
+  network-counter:
+    image: 'network-counter:latest'
+    ports:
+      - "8081:8080"
+    build:
+      context: ./counter
+    container_name: "network_counter"
+    depends_on:
+      [ tarantool, kafka ]
+    environment:
+      - TARANTOOL_NODES=tarantool:3301
+      - TARANTOOL_USERNAME=tarantool
+      - TARANTOOL_PASSWORD=tarantool
+      - KAFKA_URL=kafka:9092
+
+  network-dialogue:
+    image: 'network-dialogue:latest'
+    ports:
+      - "8080:8080"
+    build:
+      context: ./dialogue
+    container_name: "network_dialogue"
+    depends_on:
+      [ db, kafka ]
+    environment:
+      - POSTGRES_URL=jdbc:postgresql://db:5432/postgres
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=postgres
+      - KAFKA_URL=kafka:9092
